@@ -64,6 +64,11 @@ html.clip .wrap{padding:0; max-width:none; gap:0}
 html.clip .wrap > :not(.stage){display:none}
 html.clip .stage{border:0; border-radius:0; width:100vw; height:100vh; aspect-ratio:auto}
 html.clip .hint3d{display:none}
+
+.soundbtn{position:absolute; top:10px; left:10px; z-index:5; font:inherit; font-size:14px; font-weight:600; padding:7px 12px; border-radius:999px; border:1px solid rgba(0,0,0,.25); background:rgba(255,255,255,.92); color:#1b1a17; cursor:pointer}
+.soundbtn[aria-pressed="true"]{background:#1f5aa6; color:#fff; border-color:#1f5aa6}
+.soundbtn:focus-visible{outline:3px solid #e2b04f; outline-offset:2px}
+html.clip .soundbtn, html.embed .soundbtn{display:none}
 </style>
 <script>if (/[?&]embed/.test(location.search)) document.documentElement.classList.add("embed"); if (/[?&]clip=/.test(location.search)) document.documentElement.classList.add("clip");</script>
 
@@ -78,6 +83,7 @@ html.clip .hint3d{display:none}
   <div class="steps" role="group" aria-label="Game table activities">
     <strong style="font-size:14px">Game table</strong>
     <button class="btn solid" id="playAll" type="button">Play 1–4</button>
+    <button class="btn" type="button" data-s="0" aria-pressed="false"><span class="n">★</span>Start: read the sign</button>
     <button class="btn" type="button" data-s="1" aria-pressed="false"><span class="n">1</span>Guess</button>
     <button class="btn" type="button" data-s="2" aria-pressed="false"><span class="n">2</span>Turn and match</button>
     <button class="btn" type="button" data-s="3" aria-pressed="false"><span class="n">3</span>Explore</button>
@@ -135,7 +141,7 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.shadowMap.enable
 stage.prepend(renderer.domElement);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(40, 16/9, 0.05, 30);
-const HOME = {p:[0.2, 3.6, 4.0], t:[1.25, 0.7, 0]};
+const HOME = {p:[-0.15, 3.7, 4.4], t:[1.05, 0.7, 0.15]};
 camera.position.set(...HOME.p);
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
 controls.target.set(...HOME.t); controls.enableDamping = true; controls.minDistance = 0.6; controls.maxDistance = 9; controls.maxPolarAngle = Math.PI*0.49;
@@ -411,6 +417,10 @@ function applyDone(n){ // instantly set what earlier steps finished
 
 /* ---------- steps ---------- */
 const CAP = {
+  0:["Start · Read the sign",
+     "Every visit starts at the Sandstone Hextoks sign by the entrance. New visitors stop and read the eight activities: 1–4 at the game table, 5–8 at the heritage desk.",
+     "Two new visitors read the sign while others play at both tables, so nobody is in the way.",
+     "Then they go to the game table and start with activity 1, Guess where."],
   1:["1 · Guess together",
      "Only the photos show, because the tokens are under covers with blank sides. Each visitor drops a chip on the country they think it is. Then the covers come off.",
      "Three people drop chips at the same time. Each country slot has its own reader, so every chip counts.",
@@ -465,9 +475,9 @@ let busy = false;
 function lock(on){ busy = on; document.querySelectorAll(".steps button").forEach(b => b.disabled = on); }
 async function run(list){ if (busy) return; lock(true); try { for (const n of list){ await STEPS[n](); await wait(300); } } finally { lock(false); } }
 function resetBoth(){ resetTable(); if (typeof resetStation2 === "function") resetStation2(); }
-function prepare(n){ resetBoth(); if (n <= 4) applyDone(n-1); else { applyDone(4); applyDone2(n-5); } }
+function prepare(n){ resetBoth(); if (n === 0) return; if (n <= 4) applyDone(n-1); else { applyDone(4); applyDone2(n-5); } }
 document.querySelectorAll("[data-s]").forEach(b => b.onclick = () => { if (busy) return; const n = +b.dataset.s; prepare(n); run([n]); });
-$("playAll").onclick = () => { if (busy) return; resetBoth(); run([1,2,3,4]); };
+$("playAll").onclick = () => { if (busy) return; resetBoth(); run([0,1,2,3,4]); };
 $("playAll2").onclick = () => { if (busy) return; resetBoth(); applyDone(4); run([5,6,7,8]); };
 $("resetAll").onclick = () => { if (busy) return; resetBoth(); camGo(HOME.p, HOME.t);
   document.querySelectorAll("[data-s]").forEach(b => b.setAttribute("aria-pressed","false"));
@@ -702,6 +712,49 @@ async function stepS8(){
 STEPS.push(stepS5, stepS6, stepS7, stepS8);
 resetStation2();
 
+/* ---------- welcome sign: visitors start here, read the eight activities, then go to a table ---------- */
+function signDraw(g, w, h){
+  g.fillStyle = "#f4efe4"; g.fillRect(0,0,w,h); g.strokeStyle = "#5b4630"; g.lineWidth = 18; g.strokeRect(9,9,w-18,h-18);
+  g.strokeStyle = "#1f5aa6"; g.lineWidth = 3; g.strokeRect(30,30,w-60,h-60);
+  g.textAlign = "center"; g.fillStyle = "#16305a"; g.font = F(600, 58); g.fillText("Sandstone Hextoks", w/2 - 70, 108);
+  g.fillStyle = "#b5642a"; g.direction = "rtl"; g.font = F(700, 66, "Amiri, 'Noto Naskh Arabic', serif"); g.fillText("حَجَر", w/2 + 270, 112); g.direction = "ltr";
+  g.fillStyle = "#4a4238"; g.font = F(500, 29); g.fillText("Start here. Read the steps, then go to a table.", w/2, 162);
+  const col = (x, title, color, items, first) => {
+    g.fillStyle = color; g.fillRect(x - 230, 200, 460, 56); g.fillStyle = "#fff"; g.font = F(600, 30); g.fillText(title, x, 238);
+    items.forEach((t, i) => { const y = 300 + i*92;
+      g.fillStyle = "#fff"; g.strokeStyle = color; g.lineWidth = 3; g.fillRect(x - 230, y - 34, 460, 76); g.strokeRect(x - 230, y - 34, 460, 76);
+      g.beginPath(); g.arc(x - 190, y + 4, 24, 0, 7); g.fillStyle = color; g.fill();
+      g.fillStyle = "#fff"; g.font = F(700, 26); g.fillText(String(first + i), x - 190, y + 13);
+      g.textAlign = "left"; g.fillStyle = "#1b1a17"; g.font = F(500, 29); g.fillText(t, x - 150, y + 14); g.textAlign = "center"; });
+  };
+  col(w/2 - 260, "Game table", "#1f5aa6", ["Guess where", "Turn and match", "Explore a site", "Connection tiles"], 1);
+  col(w/2 + 260, "Heritage desk", "#b5642a", ["Timeline", "Videos and stories", "Where in the world", "Questions"], 5);
+  g.fillStyle = "#4a4238"; g.font = F(500, 24); g.fillText("Two people per token. Take turns, and help each other.", w/2, h - 50);
+}
+const SIGN_P = V(-1.2, 0, 1.75), SIGN_A = 0.6;
+const sign = new THREE.Group(); sign.position.copy(SIGN_P); sign.rotation.y = SIGN_A; scene.add(sign);
+[-0.55, 0.55].forEach(x => { add(new THREE.CylinderGeometry(0.025, 0.03, 1.95, 10), M(0x5b4630), [x, 0.975, -0.03], sign); add(new THREE.BoxGeometry(0.4, 0.04, 0.3), M(0x4a3826), [x, 0.02, -0.03], sign); });
+const SGT = canvasTex(1100, 800, signDraw); if (document.fonts) document.fonts.ready.then(() => SGT.redraw(signDraw));
+add(new THREE.BoxGeometry(1.15, 0.84, 0.025), [M(0x5b4630), M(0x5b4630), M(0x5b4630), M(0x5b4630), new THREE.MeshStandardMaterial({map:SGT.t, roughness:.9}), M(0x5b4630)], [0, 1.45, 0], sign);
+const signFront = (d, side) => SIGN_P.clone().add(V(Math.sin(SIGN_A)*d, 0, Math.cos(SIGN_A)*d)).add(V(Math.cos(SIGN_A)*side, 0, -Math.sin(SIGN_A)*side));
+const SIGN_LOOK = V(SIGN_P.x, 1.4, SIGN_P.z);
+const SIGN_CAM = (() => { const c = signFront(2.4, 0.9); return [[c.x, 2.2, c.z], [SIGN_P.x + 0.2, 1.25, SIGN_P.z + 0.1]]; })();
+const SIGN_CLOSE = (() => { const c = signFront(1.35, 0), t = signFront(0, 0); return [[c.x, 1.75, c.z], [t.x, 1.45, t.z]]; })();
+// two new visitors read the sign while the tables are busy
+const READERS = [[1.6, 0x8e4f9e, 0x2f3542, signFront(0.95, -0.38)], [1.28, 0x5b8c3a, 0x3f3f46, signFront(0.85, 0.36)]].map(([h, sh, pa, p]) => {
+  const R = makePerson(h, sh, pa, p.x, p.z); R.g.rotation.y = SIGN_A + Math.PI; R.g.updateMatrixWorld(true); R.reader = true; R.lookTo = SIGN_LOOK.clone(); R.look = SIGN_LOOK.clone(); return R; });
+READERS.forEach(R => people.push(R));
+const baseLook = look; look = (P, v) => { if (P.reader) return; baseLook(P, v); };
+async function step0(){
+  caption(0);
+  if (CLIP !== null){ camera.position.set(...SIGN_CAM[0]); controls.target.set(...SIGN_CAM[1]); } else camGo(...SIGN_CAM, 1200);
+  await wait(2600);
+  if (CLIP !== null){ camera.position.set(...SIGN_CLOSE[0]); controls.target.set(...SIGN_CLOSE[1]); } else camGo(...SIGN_CLOSE, 1400);
+  await wait(3400);
+}
+STEPS[0] = step0;
+
+
 /* ---------- clip mode: ?clip=N records activity N close up; ?clip=0 is the overview ---------- */
 const CLIP = (() => { const m = location.search.match(/[?&]clip=(\d+)/); return m ? +m[1] : null; })();
 const CLOSE = {
@@ -718,9 +771,9 @@ if (CLIP !== null){
   setTimeout(async () => {
     if (CLIP === 0){
       resetBoth(); applyDone(1);
-      camera.position.set(1.25 - 2.6, 2.4, 2.6); controls.target.set(1.25, 0.72, 0);
+      window.__clipReady = true; await step0();
+      camera.position.set(1.25 + 1.6, 3.3, 3.2); controls.target.set(1.25, 0.72, 0);
       controls.autoRotate = true; controls.autoRotateSpeed = 1.6;
-      window.__clipReady = true;
       await Promise.all([ step2(), stepS5() ]); await Promise.all([ step4(), stepS7() ]); await wait(600);
     } else {
       prepare(CLIP); caption(CLIP); await wait(500); window.__clipReady = true;
@@ -753,6 +806,48 @@ function resize(){ const w = stage.clientWidth, h = stage.clientHeight; renderer
 new ResizeObserver(resize).observe(stage); resize();
 document.fonts && document.fonts.ready.then(drawPad);
 Object.values(imgs).forEach(im => im.onload = drawPad);
+
+/* ---------- sound: a voice explains each step, and a chime marks the big moment ---------- */
+(() => {
+  const NARR = {"0": ["Start here.", "Every visit begins at the Sandstone Hextoks sign. It lists eight activities: one to four at the game table, five to eight at the heritage desk.", "Read the steps, then go to the game table."], "w": ["Welcome to Sandstone Hextoks. Two World Heritage sites, Hegra in Saudi Arabia and Mesa Verde in the United States, both shaped from sandstone. Press Start, or an activity, and I'll explain it."], "1": ["Activity one. Guess where.", "The tokens are under covers, so only the photos show. Each visitor drops a chip on the country they think it is.", "Many guess Jordan for Hegra, because it looks like Petra. Both were built by the Nabataeans."], "2": ["Activity two. Turn and match.", "Now two people turn the tokens, one on each side.", "When both show the same concept, here Marks, the light turns green and a chime plays.", "Hegra has writing above the tomb doors. Mesa Verde has images pecked into the cliff."], "3": ["Activity three. Explore a site.", "The child taps the top of the Hegra token, and the tablets show that site up close."], "4": ["Activity four. Connection tiles.", "Three people snap tiles onto the plain sides of the tokens at the same time.", "Each tile shows one way these places still connect to people today."], "5": ["Activity five. Timeline.", "Two visitors slide their markers. Mesa Verde joined the World Heritage List in 1978. Hegra joined in 2008, as Saudi Arabia's first site."], "6": ["Activity six. Videos and stories.", "Setting a token on the video pad plays a short video about that site. Story cards tell one story each."], "7": ["Activity seven. Where in the world.", "Visitors read the coordinates, push each pin into the map, and stretch a string between them. The two sites are about seventy-five hundred miles apart."], "8": ["Activity eight. Questions.", "A visitor slides a question card into the slot. The answer comes only from checked facts, each with its source."]}, CHIME_AT = [2];
+  const synth = window.speechSynthesis, stage = document.getElementById("stage");
+  if (!stage) return;
+  const btn = document.createElement("button"); btn.type = "button"; btn.className = "soundbtn";
+  let on = false; try { on = localStorage.getItem("hextok-sound") === "1"; } catch (e) {}
+  const show = () => { btn.setAttribute("aria-pressed", String(on)); btn.textContent = on ? "🔊 Sound on" : "🔇 Sound off"; btn.title = on ? "Turn the voice off" : "Turn on a voice that explains each step"; };
+  show(); stage.append(btn);
+  let voiceEn = null, voiceAr = null;
+  const pick = () => { const vs = synth ? synth.getVoices() : [];
+    const pref = ["Google US English", "Samantha", "Microsoft Aria", "Microsoft Jenny", "Alex"];
+    voiceEn = vs.find(v => pref.some(p => v.name.includes(p))) || vs.find(v => /^en[-_]US/i.test(v.lang)) || vs.find(v => /^en/i.test(v.lang)) || null;
+    voiceAr = vs.find(v => /^ar/i.test(v.lang)) || null; };
+  if (synth){ pick(); synth.onvoiceschanged = pick; }
+  let ac = null;
+  function chime(){ if (!on) return; try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); const t = ac.currentTime;
+    [[659.25, 0], [987.77, 0.14]].forEach(([f, d]) => { const o = ac.createOscillator(), g = ac.createGain(); o.type = "sine"; o.frequency.value = f;
+      g.gain.setValueAtTime(0, t + d); g.gain.linearRampToValueAtTime(0.18, t + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.9);
+      o.connect(g).connect(ac.destination); o.start(t + d); o.stop(t + d + 1); }); } catch (e) {} }
+  let token = 0, speaking = Promise.resolve();
+  function say(n){
+    if (!synth) return; synth.cancel(); const my = ++token; if (!on || !NARR[n]) { speaking = Promise.resolve(); return; }
+    const parts = NARR[n].filter(p => typeof p === "string" || voiceAr);
+    speaking = new Promise(done => {
+      let i = 0; const next = () => { if (my !== token || i >= parts.length) return done();
+        const p = parts[i++], u = new SpeechSynthesisUtterance(typeof p === "string" ? p : p.ar);
+        if (typeof p === "string"){ if (voiceEn) u.voice = voiceEn; u.lang = voiceEn ? voiceEn.lang : "en-US"; u.rate = 0.98; }
+        else { u.voice = voiceAr; u.lang = voiceAr.lang; u.rate = 0.8; }
+        u.onend = u.onerror = next; synth.speak(u); };
+      next(); setTimeout(done, 25000); });
+  }
+  btn.onclick = () => { on = !on; try { localStorage.setItem("hextok-sound", on ? "1" : "0"); } catch (e) {} show();
+    if (!on && synth) { synth.cancel(); token++; }
+    else { const cur = document.querySelector("[data-s][aria-pressed='true']"); say(cur ? +cur.dataset.s : "w"); } };
+  const baseCap = caption; caption = n => { baseCap(n); say(n); };
+  STEPS.forEach((fn, n) => { if (!fn) return; STEPS[n] = async () => { await fn(); if (CHIME_AT.includes(n)) chime(); if (on) await speaking; }; });
+  document.querySelectorAll("#resetAll").forEach(b => b.addEventListener("click", () => { if (synth) synth.cancel(); token++; }));
+  if (on) say("w");
+})();
+
 requestAnimationFrame(frame);
 </script>
 
