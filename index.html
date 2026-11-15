@@ -430,10 +430,10 @@ a.btn{text-decoration:none; display:inline-flex}
   </section>
 
   <section class="card" id="map" aria-labelledby="map-h">
-    <div class="sec-h"><div class="t"><span class="num">7</span><div><span class="label">Heritage desk</span><h2 id="map-h">Where in the world?</h2><p class="sub">Read each pin’s coordinates. Tap a pin, then tap its place on the map (or drag it). The grid lines help. When a pin lands in the right place, the map zooms in on that country. When both pins are in, drag from one pin to the other to stretch the string.</p></div></div><figure class="clip"><video autoplay muted loop playsinline preload="metadata" aria-label="Close-up: two visitors push pins into the map board and stretch a string between them"><source src="step7.mp4" type="video/mp4"><source src="step7.webm" type="video/webm"></video><figcaption>At the table</figcaption></figure></div>
+    <div class="sec-h"><div class="t"><span class="num">7</span><div><span class="label">Heritage desk</span><h2 id="map-h">Where in the world?</h2><p class="sub">Read each pin’s coordinates. Drag a pin onto its country, or tap the pin and then tap the map. The grid lines help. When both pins are in, the string stretches between them and shows how far apart the sites are.</p></div></div><figure class="clip"><video autoplay muted loop playsinline preload="metadata" aria-label="Close-up: two visitors push pins into the map board and stretch a string between them"><source src="step7.mp4" type="video/mp4"><source src="step7.webm" type="video/webm"></video><figcaption>At the table</figcaption></figure></div>
     <div class="mpins" id="pinTray"></div>
     <div class="mstage"><svg id="mapSvg" viewBox="0 0 900 470" role="group" aria-label="World map with latitude and longitude grid"></svg></div>
-    <div class="row"><span class="mdist" id="dist" aria-live="polite"></span><span class="munit row" id="unit" hidden><button type="button" data-u="mi" aria-pressed="true">miles</button><button type="button" data-u="km" aria-pressed="false">km</button></span><button class="btn solid" type="button" id="zoomOut" hidden>Back to the world</button><button class="btn solid" type="button" id="stringBtn" hidden>Stretch the string</button><button class="btn" type="button" id="mapReset">Start over</button></div>
+    <div class="row"><span class="mdist" id="dist" aria-live="polite"></span><span class="munit row" id="unit" hidden><button type="button" data-u="mi" aria-pressed="true">miles</button><button type="button" data-u="km" aria-pressed="false">km</button></span><button class="btn solid" type="button" id="zoomOut" hidden>Back to the world</button><button class="btn" type="button" id="mapReset">Start over</button></div>
     <p class="fb" id="mapFb" aria-live="polite"></p>
     <p class="src">Coordinates: <a href="https://whc.unesco.org/en/list/1293/" target="_blank" rel="noopener">UNESCO, Hegra</a> · <a href="https://whc.unesco.org/en/list/27/" target="_blank" rel="noopener">UNESCO, Mesa Verde</a>. Map outlines: <a href="https://www.naturalearthdata.com/" target="_blank" rel="noopener">Natural Earth</a></p>
   </section>
@@ -910,7 +910,7 @@ function drawMap(){}
         co:"N37°15′ W108°29′", lonlat:[-108.486, 37.262], c:"--us", feat:byId(840),
         box:{type:"Feature", geometry:{type:"MultiPoint", coordinates:[[-125, 24], [-66.5, 49.5]]}}}
   };
-  const placed = {sa:false, us:false}; let strung = false, unit = "mi", zoomedTo = null, busy = false;
+  const placed = {sa:false, us:false}; let strung = false, stringT = 1, unit = "mi", zoomedTo = null, busy = false;
   const KM = d3.geoDistance(PL.sa.lonlat, PL.us.lonlat) * 6371;
   const proj = d3.geoNaturalEarth1(), path = d3.geoPath(proj);
   const WORLD_VIEW = (() => { proj.fitExtent([[10, 10], [W - 10, H - 10]], {type:"Sphere"}); return {s:proj.scale(), t:proj.translate()}; })();
@@ -935,7 +935,8 @@ function drawMap(){}
       [-150, -120, -90, -60, -30, 0, 30, 60, 90, 120, 150].forEach(lon => { const p = proj([lon, -2]); if (p) g.append("text").attr("x", p[0]).attr("y", p[1] + 12).attr("text-anchor", "middle").attr("font-size", 10.5).attr("font-family", "IBM Plex Mono, monospace").attr("fill", css("--muted")).text(lon === 0 ? "0°" : `${Math.abs(lon)}°${lon > 0 ? "E" : "W"}`); });
     }
     if (strung && !zoomedTo){
-      g.append("path").attr("d", path({type:"LineString", coordinates:[PL.us.lonlat, PL.sa.lonlat]})).attr("fill", "none").attr("stroke", css("--accent")).attr("stroke-width", 3).attr("stroke-dasharray", "8 6");
+      const gi = d3.geoInterpolate(PL.us.lonlat, PL.sa.lonlat), pts = d3.range(0, 41).map(i => gi(i / 40 * stringT));
+      g.append("path").attr("d", path({type:"LineString", coordinates:pts})).attr("fill", "none").attr("stroke", css("--accent")).attr("stroke-width", 3).attr("stroke-dasharray", "8 6");
     }
     Object.keys(PL).forEach(k => { if (placed[k]) pinMark(k); });
     // big country label while zoomed in
@@ -965,23 +966,34 @@ function drawMap(){}
       requestAnimationFrame(step);
     });
   }
+  let backTimer = null;
   async function zoomShow(k){
     busy = true; $("zoomOut").hidden = false;
     zoomedTo = k; await animateTo(viewFor(k));
     $("mapFb").className = "fb right"; $("mapFb").textContent = `You found ${PL[k].name}! ${PL[k].note}`;
+    clearTimeout(backTimer); backTimer = setTimeout(zoomBack, reduce ? 2500 : 2600);
   }
   async function zoomBack(){
-    if (!zoomedTo) return;
-    $("zoomOut").hidden = true; await animateTo(WORLD_VIEW); zoomedTo = null; draw(); busy = false;
-    $("mapFb").className = "fb";
-    $("mapFb").textContent = placed.sa && placed.us ? (strung ? "" : "Both pins are in. Now drag from one pin to the other to stretch the string.") : "Now place the other pin.";
-    tray();
+    if (!zoomedTo) return; clearTimeout(backTimer);
+    $("zoomOut").hidden = true; await animateTo(WORLD_VIEW); zoomedTo = null; draw();
+    if (placed.sa && placed.us && !strung){ await stretch(); }
+    else { $("mapFb").className = "fb"; $("mapFb").textContent = placed.sa && placed.us ? "" : `Now place the ${placed.sa ? "Mesa Verde" : "Hegra"} pin.`; }
+    busy = false; tray();
+  }
+  function stretch(){
+    strung = true; stringT = 0; $("mapFb").className = "fb"; $("mapFb").textContent = "Both pins are in. The string stretches between them…";
+    return new Promise(res => {
+      const t0 = performance.now(), dur = reduce ? 0 : 1600;
+      const step = now => { stringT = dur ? Math.min(1, (now - t0) / dur) : 1; draw();
+        if (stringT < 1) requestAnimationFrame(step);
+        else { distText(); $("mapFb").className = "fb right"; $("mapFb").textContent = "The string follows the shortest path over the globe, which looks curved on a flat map."; res(); } };
+      requestAnimationFrame(step);
+    });
   }
   function tray(){
     $("pinTray").innerHTML = Object.keys(PL).map(k => `<div class="mpin${placed[k] ? " done" : ""}" data-k="${k}" style="--c:var(${PL[k].c})" ${placed[k] ? "" : `tabindex="0" role="button" aria-label="${PL[k].name} pin. Drag it onto the map, or press Enter to place it."`}>
         <i></i><span><b>${PL[k].name}</b><small>${PL[k].co}</small></span></div>`).join("");
     document.querySelectorAll(".mpin:not(.done)").forEach(bindPin);
-    $("stringBtn").hidden = !(placed.sa && placed.us) || strung || !!zoomedTo;
   }
   function distText(){
     if (!strung){ $("dist").textContent = ""; $("unit").hidden = true; return; }
@@ -1000,22 +1012,27 @@ function drawMap(){}
     const lonlat = proj.invert([pt.x, pt.y]), fb = $("mapFb");
     if (!lonlat){ fb.className = "fb wrong"; fb.textContent = "Drop the pin on the map."; return; }
     const [tx, ty] = proj(PL[k].lonlat);
-    if (Math.hypot(pt.x - tx, pt.y - ty) < 32){ placed[k] = true; tray(); zoomShow(k); }
+    if (d3.geoContains(PL[k].feat, lonlat) || Math.hypot(pt.x - tx, pt.y - ty) < 40){ placed[k] = true; picked = null; tray(); zoomShow(k); }
     else { fb.className = "fb wrong"; fb.textContent = hint(k, lonlat); }
   }
   function bindPin(el){
     const k = el.dataset.k;
     el.addEventListener("keydown", e => { if ((e.key === "Enter" || e.key === " ") && !busy){ e.preventDefault(); const [x, y] = proj(PL[k].lonlat); tryPlace(k, {x, y}); } });
     el.addEventListener("pointerdown", e => {
-      if (busy) return; e.preventDefault(); let ghost = null;
-      const mv = ev => { const pt = svgPt($("mapSvg"), ev);
+      if (busy) return; e.preventDefault(); let ghost = null; const x0 = e.clientX, y0 = e.clientY;
+      const mv = ev => {
+        if (!ghost && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 8) return;   // small wobble is still a tap
+        const pt = svgPt($("mapSvg"), ev);
         if (!ghost){ ghost = gTemp.append("g"); ghost.append("path").attr("d", "M0 0 C-9 -12 -9 -22 0 -26 C9 -22 9 -12 0 0Z").attr("fill", css(PL[k].c)).attr("stroke", css("--surface")).attr("stroke-width", 2); }
         ghost.attr("transform", `translate(${pt.x} ${pt.y})`); };
-      const up = ev => { removeEventListener("pointermove", mv); removeEventListener("pointerup", up); gTemp.selectAll("*").remove();
+      const end = () => { removeEventListener("pointermove", mv); removeEventListener("pointerup", up); removeEventListener("pointercancel", cancel); gTemp.selectAll("*").remove(); };
+      const cancel = () => end();
+      const up = ev => { end();
         const r = $("mapSvg").getBoundingClientRect();
         if (ghost && ev.clientX > r.left && ev.clientX < r.right && ev.clientY > r.top && ev.clientY < r.bottom) tryPlace(k, svgPt($("mapSvg"), ev));
-        else if (!ghost) pick(k); };
-      addEventListener("pointermove", mv); addEventListener("pointerup", up);
+        else if (ghost){ $("mapFb").className = "fb wrong"; $("mapFb").textContent = "Drop the pin on the map."; }
+        else pick(k); };
+      addEventListener("pointermove", mv); addEventListener("pointerup", up); addEventListener("pointercancel", cancel);
     });
   }
   // tap a pin, then tap its place on the map
@@ -1025,33 +1042,14 @@ function drawMap(){}
     $("mapFb").className = "fb"; $("mapFb").textContent = `Now tap the map where ${PL[k].name} is (${PL[k].co}).`;
   }
   $("mapSvg").addEventListener("click", e => {
-    if (!picked || busy || placed[picked]) return;
+    if (busy || strung) return;
+    if (!picked || placed[picked]){ if (!(placed.sa && placed.us)){ $("mapFb").className = "fb"; $("mapFb").textContent = "First tap a pin above, or drag it onto the map."; } return; }
     const k = picked; tryPlace(k, svgPt($("mapSvg"), e)); if (placed[k]) picked = null;
   });
-  function finishString(){
-    strung = true; draw(); distText(); tray();
-    $("mapFb").className = "fb right";
-    $("mapFb").textContent = "The string follows the shortest path over the globe, which looks curved on a flat map.";
-  }
-  // stretch the string: drag from one placed pin to the other
-  $("mapSvg").addEventListener("pointerdown", e => {
-    if (!(placed.sa && placed.us) || strung || busy) return;
-    const pt = svgPt($("mapSvg"), e), near = Object.keys(PL).find(k => { const [x, y] = proj(PL[k].lonlat); return Math.hypot(pt.x - x, pt.y - (y - 12)) < 30; });
-    if (!near) return;
-    e.preventDefault(); const other = near === "sa" ? "us" : "sa", [sx, sy] = proj(PL[near].lonlat);
-    const ln = gTemp.append("line").attr("x1", sx).attr("y1", sy).attr("x2", sx).attr("y2", sy).attr("stroke", css("--accent")).attr("stroke-width", 3).attr("stroke-dasharray", "8 6");
-    const mv = ev => { const p = svgPt($("mapSvg"), ev); ln.attr("x2", p.x).attr("y2", p.y); };
-    const up = ev => { removeEventListener("pointermove", mv); removeEventListener("pointerup", up); gTemp.selectAll("*").remove();
-      const p = svgPt($("mapSvg"), ev), [ox, oy] = proj(PL[other].lonlat);
-      if (Math.hypot(p.x - ox, p.y - oy) < 40) finishString();
-      else { $("mapFb").className = "fb wrong"; $("mapFb").textContent = `Stretch the string all the way to ${PL[other].name}.`; } };
-    addEventListener("pointermove", mv); addEventListener("pointerup", up);
-  });
-  $("stringBtn").onclick = finishString;
   $("zoomOut").onclick = zoomBack;
   $("unit").querySelectorAll("button").forEach(b => b.onclick = () => { unit = b.dataset.u; $("unit").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", String(x === b))); distText(); });
-  $("mapReset").onclick = async () => { if (zoomedTo){ zoomedTo = null; view = {...WORLD_VIEW}; $("zoomOut").hidden = true; busy = false; }
-    placed.sa = placed.us = false; strung = false; $("mapFb").textContent = ""; $("mapFb").className = "fb"; draw(); distText(); tray(); };
+  $("mapReset").onclick = async () => { clearTimeout(backTimer); if (zoomedTo){ zoomedTo = null; view = {...WORLD_VIEW}; $("zoomOut").hidden = true; } busy = false;
+    placed.sa = placed.us = false; strung = false; picked = null; document.querySelectorAll(".mpin").forEach(p => p.classList.remove("picked")); $("mapFb").textContent = ""; $("mapFb").className = "fb"; draw(); distText(); tray(); };
   draw(); tray();
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
 })();
@@ -1344,7 +1342,7 @@ const TIPS = [
   {el: () => $("heritage").querySelector(".her-head"), title: "5–6 · The heritage desk",
    body: "Slide each site along the timeline, then watch the videos and stories."},
   {el: () => $("map"), title: "7 · Where in the world",
-   body: "Tap a pin, then tap its place on the map. The map zooms in on the country when you get it right."},
+   body: "Drag a pin onto its country, or tap the pin and then the map. When both are in, the string stretches between them."},
   {el: () => $("askForm"), title: "8 · Ask a question",
    body: "Type any question, or tap a suggested one below. Answers come only from checked facts, each with its source."}
 ];
